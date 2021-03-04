@@ -1,22 +1,10 @@
 """Utilities to model money transactions."""
 
-import pandas
 
 from random import choices, randint
 from string import ascii_letters, digits
 
 account_chars: str = digits + ascii_letters
-
-
-# Load the financial transactions file and remove apostrophes
-trans_df = pandas.read_csv("FinTx.csv")
-trans_df["customer"] = trans_df["customer"].str.replace('[^\w\s]','')
-trans_df["age"] = trans_df["age"].str.replace('[^\w\s]','')
-trans_df["gender"] = trans_df["gender"].str.replace('[^\w\s]','')
-trans_df["zipcodeOri"] = trans_df["zipcodeOri"].str.replace('[^\w\s]','')
-trans_df["merchant"] = trans_df["merchant"].str.replace('[^\w\s]','')
-trans_df["zipMerchant"] = trans_df["zipMerchant"].str.replace('[^\w\s]','')
-trans_df["category"] = trans_df["category"].str.replace('[^\w\s]','')
 
 
 
@@ -32,7 +20,6 @@ def _random_amount() -> float:
 
 def create_random_transaction() -> dict:
     """Create a fake, randomised transaction."""
-    rand_cust = trans_df.sample()
 
     return {
         #'source'.to_string(): rand_cust["customer"],
