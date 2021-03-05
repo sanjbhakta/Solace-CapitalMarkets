@@ -7,4 +7,9 @@ Messaging frameworks such as Solace contribute to the digital transformation jou
 
 For execution of the components, populate the Solace PubSub+ account details within the solace.properties file.
 
+Solutions Architecture
+![Solutions Architecture](Solutions_Architecture.jpg)
 
+
+Logical Architecture
+![Logical Architecture](Logical_Architecture.jpg)
