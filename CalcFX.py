@@ -1,4 +1,4 @@
-#Transaction surveillance for fraud detection
+"""Calculate FX after receiving financial transactions from a Solace topic."""
 
 ## Goal: Publisher + Subscriber 
 import ast
@@ -17,32 +17,31 @@ from jproperties import Properties
 
 # Pub topic
 TOPIC_TST = "SOLACE/CAPITALMARKETS/TRANSACTION/FRAUD_DETECT"
-#topic_tst = [TOPIC_TST + "/python/>", TOPIC_TST + "/control/>"]
+
 
 #Sub topic
 TOPIC_PREFIX = "SOLACE/CAPITALMARKETS/TRANSACTION"
 
 SHUTDOWN = False
 
-# Define transaction_FX as dictionary for pub, receiving from sub
-transaction_FX = {}
-trans_fake = "{'source': 'bwwHxpq8nFWr', 'target': 'NhzEzRtOel5J', 'amount': 2.808, 'currency': 'EUR'}"
 
 # Currency conversion from EUR to USD
 tx_FX = 1.2
+
 
 # Handle received messages
 class MessageHandlerImpl(MessageHandler):
     def on_message(self, message: InboundMessage):
         global transaction_FX
+        global tx_my
 
         payload_str = message.get_payload_as_string()
         transaction = ast.literal_eval(payload_str)
 
         #Calculate the FX
         transaction['amount'] = transaction['amount'] * tx_FX
-        transaction_FX = transaction
-        print("FX transaction: ", transaction_FX['amount'])
+
+        publish_mesg(str(transaction))
 
 
 # Inner classes for error handling
@@ -94,14 +93,29 @@ messaging_service.add_reconnection_listener(service_handler)
 messaging_service.add_reconnection_attempt_listener(service_handler)
 messaging_service.add_service_interruption_listener(service_handler)
 
-# Create a direct message publisher and start it
-direct_publisher = messaging_service.create_direct_message_publisher_builder().build()
-direct_publisher.set_publish_failure_listener(PublisherErrorHandling())
-direct_publisher.set_publisher_readiness_listener
+def publish_mesg(transaction_str):
+    # Create a direct message publisher and start it
+    direct_publisher = messaging_service.create_direct_message_publisher_builder().build()
+    direct_publisher.set_publish_failure_listener(PublisherErrorHandling())
+    direct_publisher.set_publisher_readiness_listener
 
-# Blocking Start thread
-direct_publisher.start()
-# print(f'Direct Publisher ready? {direct_publisher.is_ready()}')
+    # Blocking Start thread
+    direct_publisher.start()
+
+    outbound_msg = messaging_service.message_builder() \
+                .with_application_message_id("sample_id") \
+                .with_property("application", "samples") \
+                .with_property("language", "Python") \
+                .build(transaction_str)
+
+    msgSeqNum = 1
+
+    print("transaction details: ", str(transaction_str))
+
+    direct_publisher.publish(destination=Topic.of(TOPIC_TST + f"/python/{msgSeqNum}"), message=outbound_msg)
+    direct_publisher.terminate()
+
+
 
 unique_name = ""
 while not unique_name:
@@ -113,17 +127,6 @@ topics_sub = []
 for t in topics:
     topics_sub.append(TopicSubscription.of(t))
 
-msgSeqNum = 0
-
-# Prepare outbound message payload and body
-#message_body = str(transaction_FX)
-message_body = trans_fake
-
-outbound_msg = messaging_service.message_builder() \
-                .with_application_message_id("sample_id") \
-                .with_property("application", "samples") \
-                .with_property("language", "Python") \
-                .build(message_body)
 
 
 try:
@@ -135,25 +138,18 @@ try:
     direct_receiver.receive_async(MessageHandlerImpl())
     if direct_receiver.is_running():
         print("Connected and Subscribed! Ready to publish\n")
+
+    
     try:
-        while not SHUTDOWN:
-            
-            # Direct publish the message            
-            direct_publisher.publish(destination=Topic.of(TOPIC_TST + f"/python/{msgSeqNum}"), message=outbound_msg)
-            
-            msgSeqNum += 1
-            
-            # Modifying the outbond message instead of creating a new one
-            #outbound_msg.solace_message.message_set_binary_attachment_string(f'{message_body} --> {msgSeqNum}')
-            #outbound_msg.solace_message.set_message_application_message_id(f'sample_id {msgSeqNum}')
-            time.sleep(0.1)
+        while not SHUTDOWN:            
+              time.sleep(0.1)
     except KeyboardInterrupt:
         print('\nDisconnecting Messaging Service')
     except PubSubPlusClientError as exception:
         print(f'Received a PubSubPlusClientException: {exception}')
+
 finally:
     print('Terminating Publisher and Receiver')
-    direct_publisher.terminate()
     direct_receiver.terminate()
     print('Disconnecting Messaging Service')
     messaging_service.disconnect()

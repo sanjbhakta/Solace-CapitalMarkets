@@ -1,4 +1,5 @@
-#Transaction surveillance for fraud detection
+"""Transaction surveillance, analyze for fraud after receiving financial transactions from a Solace topic."""
+
 
 ## Goal: Publisher + Subscriber 
 import ast
@@ -15,32 +16,32 @@ from solace.messaging.receiver.message_receiver import MessageHandler, InboundMe
 from solace.messaging.resources.topic import Topic
 from jproperties import Properties
 
-#Pub topic
-TOPIC_TST = "samples/hello"
+# Pub topic
+TOPIC_TST = "SOLACE/CAPITALMARKETS/TRANSACTION/SETTLE"
+
 
 #Sub topic
 TOPIC_PREFIX = "SOLACE/CAPITALMARKETS/TRANSACTION/FRAUD_DETECT"
-#TOPIC_PREFIX = "SOLACE/CAPITALMARKETS/TRANSACTION"
 
 SHUTDOWN = False
+
 
 # Handle received messages
 class MessageHandlerImpl(MessageHandler):
     def on_message(self, message: InboundMessage):
+        global transaction_FX
+        global tx_my
 
         payload_str = message.get_payload_as_string()
         transaction = ast.literal_eval(payload_str)
-        transaction_FX = transaction['amount'] 
-        if transaction_FX >= 900:
-            print("Fraud detected\n")
+
+        #Receive the FX
+        if transaction['amount'] >= 900:
+            print("Fraud detected, sent to Compliance officer\n")
         else:
             print("No fraud\n")
+            publish_mesg(str(transaction))
 
-#        global SHUTDOWN
-#        if "quit" in message.get_destination_name():
-#            print("QUIT message received, shutting down.")
-#            SHUTDOWN = True 
-#        print("\n" + f"Message dump: {message.solace_message.get_message_dump()} \n")
 
 # Inner classes for error handling
 class ServiceEventHandler(ReconnectionListener, ReconnectionAttemptListener, ServiceInterruptionListener):
@@ -91,14 +92,29 @@ messaging_service.add_reconnection_listener(service_handler)
 messaging_service.add_reconnection_attempt_listener(service_handler)
 messaging_service.add_service_interruption_listener(service_handler)
 
-# Create a direct message publisher and start it
-direct_publisher = messaging_service.create_direct_message_publisher_builder().build()
-direct_publisher.set_publish_failure_listener(PublisherErrorHandling())
-direct_publisher.set_publisher_readiness_listener
+def publish_mesg(transaction_str):
+    # Create a direct message publisher and start it
+    direct_publisher = messaging_service.create_direct_message_publisher_builder().build()
+    direct_publisher.set_publish_failure_listener(PublisherErrorHandling())
+    direct_publisher.set_publisher_readiness_listener
 
-# Blocking Start thread
-direct_publisher.start()
-# print(f'Direct Publisher ready? {direct_publisher.is_ready()}')
+    # Blocking Start thread
+    direct_publisher.start()
+
+    outbound_msg = messaging_service.message_builder() \
+                .with_application_message_id("sample_id") \
+                .with_property("application", "samples") \
+                .with_property("language", "Python") \
+                .build(transaction_str)
+
+    msgSeqNum = 1
+
+    print("transaction details: ", str(transaction_str))
+
+    direct_publisher.publish(destination=Topic.of(TOPIC_TST + f"/python/{msgSeqNum}"), message=outbound_msg)
+    direct_publisher.terminate()
+
+
 
 unique_name = ""
 while not unique_name:
@@ -110,14 +126,8 @@ topics_sub = []
 for t in topics:
     topics_sub.append(TopicSubscription.of(t))
 
-msgSeqNum = 0
-# Prepare outbound message payload and body
-message_body = f'Hello from Python Hellow World Sample!'
-outbound_msg = messaging_service.message_builder() \
-                .with_application_message_id("sample_id") \
-                .with_property("application", "samples") \
-                .with_property("language", "Python") \
-                .build(message_body)
+
+
 try:
     print(f"Subscribed to: {topics}")
     # Build a Receiver
@@ -127,22 +137,18 @@ try:
     direct_receiver.receive_async(MessageHandlerImpl())
     if direct_receiver.is_running():
         print("Connected and Subscribed! Ready to publish\n")
+
+    
     try:
-        while not SHUTDOWN:
-            # Direct publish the message
-            direct_publisher.publish(destination=Topic.of(TOPIC_TST + f"/python/{unique_name}/{msgSeqNum}"), message=outbound_msg)
-            msgSeqNum += 1
-            # Modifying the outbond message instead of creating a new one
-            outbound_msg.solace_message.message_set_binary_attachment_string(f'{message_body} --> {msgSeqNum}')
-            outbound_msg.solace_message.set_message_application_message_id(f'sample_id {msgSeqNum}')
-            time.sleep(0.1)
+        while not SHUTDOWN:            
+              time.sleep(0.1)
     except KeyboardInterrupt:
         print('\nDisconnecting Messaging Service')
     except PubSubPlusClientError as exception:
         print(f'Received a PubSubPlusClientException: {exception}')
+
 finally:
     print('Terminating Publisher and Receiver')
-    direct_publisher.terminate()
     direct_receiver.terminate()
     print('Disconnecting Messaging Service')
     messaging_service.disconnect()
